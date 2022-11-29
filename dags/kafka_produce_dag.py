@@ -11,7 +11,7 @@ from airflow_provider_kafka.operators.produce_to_topic import ProduceToTopicOper
 
 
 with DAG(
-    'kafka_dag',
+    'kafka_produce_dag',
     default_args={
         'depends_on_past': False,
         'retries': 1,
@@ -47,7 +47,7 @@ with DAG(
     produce_operator = ProduceToTopicOperator(
         task_id="produce_to_topic",
         topic="TopicA",
-        producer_function="kafka_dag.producer_function",
+        producer_function="kafka_produce_dag.producer_function",
         kafka_config={"bootstrap.servers": "kafka:9092"},
     )
 
