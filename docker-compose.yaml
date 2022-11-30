@@ -44,7 +44,7 @@ x-airflow-common:
   # In order to add custom dependencies or upgrade provider packages you can use your extended image.
   # Comment the image line, place your Dockerfile in the directory where you placed the docker-compose.yaml
   # and uncomment the "build" line below, Then run `docker-compose build` to build the images.
-  image: ${AIRFLOW_IMAGE_NAME:-apache/airflow:2.4.3}
+  image: ${REPOSITORY:-}${AIRFLOW_IMAGE_NAME:-apache/airflow:2.4.3}
   # build: .
   environment:
     &airflow-common-env
@@ -56,9 +56,9 @@ x-airflow-common:
     AIRFLOW__CELERY__BROKER_URL: redis://:@redis:6379/0
     AIRFLOW__CORE__FERNET_KEY: ''
     AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION: 'true'
-    AIRFLOW__CORE__LOAD_EXAMPLES: 'true'
+    AIRFLOW__CORE__LOAD_EXAMPLES: 'false'
     AIRFLOW__API__AUTH_BACKENDS: 'airflow.api.auth.backend.basic_auth'
-    _PIP_ADDITIONAL_REQUIREMENTS: 'airflow-provider-kafka'
+    # _PIP_ADDITIONAL_REQUIREMENTS: 'airflow-provider-kafka'
   volumes:
     - ./dags:/opt/airflow/dags
     - ./logs:/opt/airflow/logs
@@ -73,7 +73,7 @@ x-airflow-common:
 
 services:
   postgres:
-    image: postgres:13
+    image: ${REPOSITORY:-}postgres:13
     environment:
       POSTGRES_USER: airflow
       POSTGRES_PASSWORD: airflow
@@ -87,7 +87,7 @@ services:
     restart: always
 
   redis:
-    image: redis:latest
+    image: ${REPOSITORY:-}redis:latest
     expose:
       - 6379
     healthcheck:
@@ -98,7 +98,7 @@ services:
     restart: always
 
   zookeeper:
-    image: confluentinc/cp-zookeeper:7.3.0
+    image: ${REPOSITORY:-}confluentinc/cp-zookeeper:7.3.0
     container_name: zookeeper
     ports:
       - "2181:2181"
@@ -107,7 +107,7 @@ services:
       ZOOKEEPER_TICK_TIME: 2000
 
   kafka:
-    image: confluentinc/cp-kafka:7.3.0
+    image: ${REPOSITORY:-}confluentinc/cp-kafka:7.3.0
     container_name: kafka
     ports:
     # To learn about configuring Kafka for access across networks see
