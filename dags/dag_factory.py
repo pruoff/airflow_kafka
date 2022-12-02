@@ -70,9 +70,9 @@ for data_object_id, data_object_definition in data_obj_spec.items():
         )
 
         @task.branch(task_id="has-new-data")
-        def has_new_data_branch(**context):
+        def has_new_data_branch(ti=None):
             # TODO: try:? for when no True was written?
-            if context["ti"].xcom_pull(task_ids="check-upstream-new-data"):
+            if ti.xcom_pull(task_ids="check-upstream-new-data"):
                 return "update-data"
             else:
                 return "no-op"
@@ -86,26 +86,24 @@ for data_object_id, data_object_definition in data_obj_spec.items():
         )
         notify_new_data = EmptyOperator(task_id="notify-new-data")
 
+        @task_group
+        def update_dependencies(dependencies):
+            """Update upstream data objects."""
+            tasks = [
+                TriggerDagRunOperator(
+                    trigger_dag_id=d,
+                    task_id=f"update-{d}",
+                    wait_for_completion=True,
+                )
+                for d in dependencies
+            ]
+            return tasks
+
         dependencies = data_object_definition.get("dependencies", [])
         if dependencies:
-
-            @task_group
-            def update_dependencies(dependencies):
-                """Update upstream data objects."""
-                tasks = [
-                    TriggerDagRunOperator(
-                        trigger_dag_id=d,
-                        task_id=f"update-{d}",
-                        wait_for_completion=True,
-                    )
-                    for d in dependencies
-                ]
-                return tasks
-
             data_dependencies = update_dependencies(dependencies=dependencies)
+            data_dependencies >> check_upstream_new_data
 
-            data_dependencies >> check_upstream_new_data >> has_new_data
-        else:  # in case of source data
-            check_upstream_new_data >> has_new_data
+        check_upstream_new_data >> has_new_data
         has_new_data >> Label("new data") >> update_data >> notify_new_data
         has_new_data >> Label("no data") >> noop
