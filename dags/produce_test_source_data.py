@@ -9,13 +9,12 @@ from airflow.operators.bash import BashOperator
 from airflow_provider_kafka.operators.produce_to_topic import ProduceToTopicOperator
 
 
-
 with DAG(
-    'produce_test_source_data',
+    "produce_test_source_data",
     default_args={
-        'depends_on_past': False,
-        'retries': 1,
-        'retry_delay': timedelta(minutes=5),
+        "depends_on_past": False,
+        "retries": 1,
+        "retry_delay": timedelta(minutes=5),
         # 'queue': 'bash_queue',
         # 'pool': 'backfill',
         # 'priority_weight': 10,
@@ -35,14 +34,13 @@ with DAG(
 ) as dag:
 
     start_operator = BashOperator(
-        task_id='print_date',
-        bash_command='date',
-
+        task_id="print_date",
+        bash_command="date",
     )
 
     def producer_function():
-        """ Produces 20 messages to each of the data sources 1 to 4. """
-        for source_idx in range(4):    
+        """Produces 20 messages to each of the data sources 1 to 4."""
+        for source_idx in range(4):
             for i in range(20):
                 yield (json.dumps(f"source-object-{source_idx + 1}"), json.dumps(i))
 
@@ -54,7 +52,7 @@ with DAG(
     )
 
     done_operator = BashOperator(
-        task_id='print_done',
+        task_id="print_done",
         bash_command="echo 'done!!'",
         depends_on_past=False,
     )
