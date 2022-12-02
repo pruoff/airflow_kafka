@@ -36,10 +36,11 @@ for data_object_id, data_object_definition in data_obj_spec.items():
 
         consumer_logger = logging.getLogger("airflow")
 
-        def consumer_function(message, **kwargs):
+        def consumer_function(message):
             """Consume messages from Kafka topic and filter for updates in upstream
             dependencies"""
-            # TODO: implement message format and filter
+            # TODO: implement message format
+            # TODO: implement filter
             if message.key() is None:
                 return False
 
@@ -49,7 +50,6 @@ for data_object_id, data_object_definition in data_obj_spec.items():
                 f"{data_object_id}: {message.topic()} @ {message.offset()}; {key} :"
                 f" {value}"
             )
-            # kwargs['ti'].xcom_push(key=data_object_id, value=True)
             return True
 
         # TODO: change consume operator to store msg offset-range in XCom and move
@@ -67,12 +67,16 @@ for data_object_id, data_object_definition in data_obj_spec.items():
             commit_cadence="end_of_operator",  # should be end of DAG
             max_messages=None,
             do_xcom_push=True,
+            poll_timeout=5,
+            xcom_return_key="results",
         )
 
         @task.branch(task_id="has-new-data")
         def has_new_data_branch(ti=None):
-            # TODO: try:? for when no True was written?
-            if ti.xcom_pull(task_ids="check-upstream-new-data"):
+            check_upstream_results = ti.xcom_pull(
+                task_ids="check-upstream-new-data", key="results"
+            )
+            if any(check_upstream_results):
                 return "update-data"
             else:
                 return "no-op"

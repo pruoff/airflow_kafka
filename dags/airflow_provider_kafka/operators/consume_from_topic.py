@@ -1,5 +1,5 @@
 from functools import partial
-from typing import Any, Callable, Dict, Optional, Sequence, Union
+from typing import Any, Callable, Dict, Optional, Sequence, Union, List
 
 from airflow.exceptions import AirflowException
 from airflow.models import BaseOperator
@@ -68,6 +68,7 @@ class ConsumeFromTopicOperator(BaseOperator):
         max_messages: Optional[int] = None,
         max_batch_size: int = 1000,
         poll_timeout: Optional[float] = 60,
+        xcom_return_key: Optional[List[Any]] = None,
         **kwargs: Any,
     ) -> None:
 
@@ -83,6 +84,7 @@ class ConsumeFromTopicOperator(BaseOperator):
         self.max_messages = max_messages or True
         self.max_batch_size = max_batch_size
         self.poll_timeout = poll_timeout
+        self.xcom_return_key = xcom_return_key
 
         if self.commit_cadence not in VALID_COMMIT_CADENCE:
             raise AirflowException(
@@ -135,8 +137,17 @@ class ConsumeFromTopicOperator(BaseOperator):
                 self.log.info("Reached end of log. Exiting.")
                 break
 
+            results = []
             for m in msgs:
-                apply_callable(m)
+                result = apply_callable(m)
+                if self.xcom_return_key is not None:
+                    results.append(result)
+
+            if self.xcom_return_key is not None:
+                self.log.info(
+                    f"pushing results to XCom key '{self.xcom_return_key}: {results}"
+                )
+                context["ti"].xcom_push(key=self.xcom_return_key, value=results)
 
             if self.commit_cadence == "end_of_batch":
                 self.log.info(f"committing offset at {self.commit_cadence}")
