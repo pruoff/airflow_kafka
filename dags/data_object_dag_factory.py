@@ -8,6 +8,7 @@ from airflow import DAG
 from airflow.operators.bash import BashOperator
 from airflow.operators.empty import EmptyOperator
 from airflow.operators.trigger_dagrun import TriggerDagRunOperator
+from airflow.sensors.external_task import ExternalTaskSensor
 from airflow.utils.edgemodifier import Label
 from airflow.decorators import task, task_group
 from airflow_provider_kafka.operators.consume_from_topic import ConsumeFromTopicOperator
@@ -51,11 +52,11 @@ for data_object_id, data_object_definition in data_obj_spec.items():
                 f" {value}"
             )
             if data_object_id == key:
-                return message
+                return value
             return None
 
         # TODO: change consume operator to store msg offset-range in XCom and move
-        # commit to new commit operator at the end of the DAG
+        # move commit to new commit operator at the end of the DAG
         check_upstream_new_data = ConsumeFromTopicOperator(
             task_id="check-upstream-new-data",
             topics=["TopicA"],
@@ -81,10 +82,9 @@ for data_object_id, data_object_definition in data_obj_spec.items():
             if check_upstream_results is not None and any(check_upstream_results):
                 return "update-data"
             else:
-                return "no-op"
+                return "ending"
 
         has_new_data = has_new_data_branch()
-        noop = EmptyOperator(task_id="no-op")
         update_data = BashOperator(
             task_id="update-data",
             bash_command="echo $xcom",
@@ -117,24 +117,50 @@ for data_object_id, data_object_definition in data_obj_spec.items():
         )
 
         @task_group
-        def update_dependencies(dependencies):
+        def trigger_dependencies(dependencies):
             """Update upstream data objects."""
             tasks = [
                 TriggerDagRunOperator(
                     trigger_dag_id=d,
-                    task_id=f"update-{d}",
-                    wait_for_completion=True,
-                    poke_interval=5,
+                    task_id=f"trigger-{d}",
                 )
                 for d in dependencies
             ]
             return tasks
 
-        dependencies = data_object_definition.get("dependencies", [])
-        if dependencies:
-            data_dependencies = update_dependencies(dependencies=dependencies)
-            data_dependencies >> check_upstream_new_data
+        @task_group
+        def wait_for_dependencies(dependencies):
+            """Wait for the DAGs of upstream data objects to finish."""
+
+            tasks = [
+                ExternalTaskSensor(
+                    task_id=f"wait-for-{d}",
+                    external_dag_id=d,
+                    external_task_id="ending",
+                    allowed_states=["success"],
+                    failed_states=["failed"],
+                    mode="poke",
+                    poke_interval=20,
+                )
+                for d in dependencies
+            ]
+            return tasks
+
+        ending = EmptyOperator(task_id="ending")
+
+        upstream_dependencies = data_object_definition.get("dependencies", [])
+        # only for non-source data objects
+        if upstream_dependencies:
+            trigger_dependencies = trigger_dependencies(
+                dependencies=upstream_dependencies
+            )
+            gather_group = EmptyOperator(task_id="gather")
+            wait_for_dependencies = wait_for_dependencies(
+                dependencies=upstream_dependencies
+            )
+            trigger_dependencies >> gather_group
+            gather_group >> wait_for_dependencies >> check_upstream_new_data
 
         check_upstream_new_data >> has_new_data
-        has_new_data >> Label("new data") >> update_data >> notify_new_data
-        has_new_data >> Label("no data") >> noop
+        has_new_data >> Label("new data") >> update_data >> notify_new_data >> ending
+        has_new_data >> Label("no data") >> ending
