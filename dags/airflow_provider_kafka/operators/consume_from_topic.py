@@ -140,7 +140,7 @@ class ConsumeFromTopicOperator(BaseOperator):
             results = []
             for m in msgs:
                 result = apply_callable(m)
-                if self.xcom_return_key is not None:
+                if self.xcom_return_key is not None and result is not None:
                     results.append(result)
 
             if self.xcom_return_key is not None:
