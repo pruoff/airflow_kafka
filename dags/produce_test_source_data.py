@@ -11,7 +11,7 @@ from airflow_provider_kafka.operators.produce_to_topic import ProduceToTopicOper
 
 
 with DAG(
-    'kafka_produce_dag',
+    'produce_test_source_data',
     default_args={
         'depends_on_past': False,
         'retries': 1,
@@ -41,13 +41,15 @@ with DAG(
     )
 
     def producer_function():
-        for i in range(20):
-            yield (json.dumps(i), json.dumps(i + 1))
+        """ Produces 20 messages to each of the data sources 1 to 4. """
+        for source_idx in range(4):    
+            for i in range(20):
+                yield (json.dumps(f"source-object-{source_idx + 1}"), json.dumps(i))
 
     produce_operator = ProduceToTopicOperator(
         task_id="produce_to_topic",
         topic="TopicA",
-        producer_function="kafka_produce_dag.producer_function",
+        producer_function="produce_test_source_data.producer_function",
         kafka_config={"bootstrap.servers": "kafka:9092"},
     )
 
