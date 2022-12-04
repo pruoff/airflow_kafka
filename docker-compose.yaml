@@ -44,8 +44,8 @@ x-airflow-common:
   # In order to add custom dependencies or upgrade provider packages you can use your extended image.
   # Comment the image line, place your Dockerfile in the directory where you placed the docker-compose.yaml
   # and uncomment the "build" line below, Then run `docker-compose build` to build the images.
-  image: ${REPOSITORY:-}${AIRFLOW_IMAGE_NAME:-apache/airflow:2.4.3}
-  # build: images/airflow
+  # image: ${REPOSITORY:-}${AIRFLOW_IMAGE_NAME:-apache/airflow:2.4.3}
+  build: images/airflow
   environment:
     &airflow-common-env
     AIRFLOW__CORE__EXECUTOR: CeleryExecutor
@@ -58,7 +58,7 @@ x-airflow-common:
     AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION: 'true'
     AIRFLOW__CORE__LOAD_EXAMPLES: 'false'
     AIRFLOW__API__AUTH_BACKENDS: 'airflow.api.auth.backend.basic_auth'
-    _PIP_ADDITIONAL_REQUIREMENTS: 'asgiref confluent-kafka'
+    #_PIP_ADDITIONAL_REQUIREMENTS: 'asgiref confluent-kafka'
   volumes:
     - ./dags:/opt/airflow/dags
     - ./logs:/opt/airflow/logs
@@ -73,8 +73,7 @@ x-airflow-common:
 
 services:
   postgres:
-    # image: repo.bit.admin.ch:8444/postgres:13
-    image: postgres:13
+    image: repo.bit.admin.ch:8444/postgres:13
     environment:
       POSTGRES_USER: airflow
       POSTGRES_PASSWORD: airflow
@@ -88,8 +87,7 @@ services:
     restart: always
 
   redis:
-    # image: repo.bit.admin.ch:8444/redis:latest
-    image: redis:latest
+    image: repo.bit.admin.ch:8444/redis:latest
     expose:
       - 6379
     healthcheck:
@@ -100,8 +98,7 @@ services:
     restart: always
 
   zookeeper:
-    # image: repo.bit.admin.ch:8444/confluentinc/cp-zookeeper:7.3.0
-    image: confluentinc/cp-zookeeper:7.3.0
+    image: repo.bit.admin.ch:8444/confluentinc/cp-zookeeper:7.3.0
     hostname: zookeeper
     ports:
       - "2181:2181"
@@ -110,8 +107,7 @@ services:
       ZOOKEEPER_TICK_TIME: 2000
 
   kafka:
-    # image: repo.bit.admin.ch:8444/confluentinc/cp-kafka:7.3.0
-    image: confluentinc/cp-kafka:7.3.0
+    image: repo.bit.admin.ch:8444/confluentinc/cp-kafka:7.3.0
     hostname: kafka
     ports:
     # To learn about configuring Kafka for access across networks see
