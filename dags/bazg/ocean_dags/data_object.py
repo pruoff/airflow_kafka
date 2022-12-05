@@ -3,13 +3,16 @@ from enum import Enum
 from typing import List, Optional
 
 from airflow import DAG
+from airflow.operators.python import PythonOperator, BranchPythonOperator
 
 from bazg.ocean_dags.operator import (
     consume_upstream_data_changes,
     update_upstream_data_objects,
-    has_upstream_data_changed,
-    update_data,
     publish_data_changes,
+    has_upstream_data_changed_func,
+    consume_changes_op_func,
+    update_data_func,
+    consume_upstream_data_updates_func,
 )
 
 
@@ -74,19 +77,45 @@ class DataObject(object):
                 "provide_context": True,
             },
         ):
-            consume_changes_op = consume_upstream_data_changes(
-                this_data_object_id=self.data_object_id,
-                upstream_data_object_ids=self.upstream_data_object_ids,
+            # @task.branch(task_id="has-upstream-data-changed")
+            # def has_upstream_data_changed(upstream_data_changes: Dict):
+            #     if len(upstream_data_changes):
+            #         return "update-data"
+            #     else:
+            #         return None
+
+            has_upstream_data_changed = BranchPythonOperator(
+                task_id="has-upstream-data-changed",
+                python_callable=has_upstream_data_changed_func,
             )
 
-            if self.upstream_data_object_ids:
-                update_upstream_op = update_upstream_data_objects(
-                    this_data_object_id=self.data_object_id,
-                    upstream_data_object_ids=self.upstream_data_object_ids,
-                )
+            # consume_changes_op = consume_upstream_data_changes(
+            #     this_data_object_id=self.data_object_id,
+            #     upstream_data_object_ids=self.upstream_data_object_ids,
+            # )
 
-                update_upstream_op >> consume_changes_op
+            # if self.upstream_data_object_ids:
+            #     update_upstream_op = update_upstream_data_objects(
+            #         this_data_object_id=self.data_object_id,
+            #         upstream_data_object_ids=self.upstream_data_object_ids,
+            #     )
 
-            publish_data_changes(
-                update_data(has_upstream_data_changed(consume_changes_op))
+            #     update_upstream_op >> consume_changes_op
+
+            consume_data = PythonOperator(
+                task_id="consume-upstream-data-updates",
+                python_callable=consume_upstream_data_updates_func,
+                wait_for_downstream=True,
+                op_kwargs={
+                    "this_data_object_id": self.data_object_id,
+                    "upstream_data_object_ids": self.upstream_data_object_ids,
+                },
             )
+
+            update_data = PythonOperator(
+                task_id="update-data",
+                python_callable=update_data_func,
+                op_kwargs={"run_id": "{{ run_id }}"},
+            )
+
+            consume_data >> has_upstream_data_changed >> update_data

@@ -55,6 +55,9 @@ with DAG(
             data_obj_spec = yaml.safe_load(infile)
 
         for data_object_id, data_object_definition in data_obj_spec.items():
+            if "source" not in data_object_id:
+                continue
+
             data_object_type = data_object_definition.get("type")
             data_object_id_field = data_object_definition.get("id-field")
 
