@@ -1,93 +1,75 @@
 ---
-source-object-1:
-  type: 
-    - s3
-  id-field:
-    - id
-  tags:
-    - source
-
-source-object-2:
-  type: 
-    - s3
-  id-field:
-    - id
-  tags:
-    - source
-
-source-object-3:
-  type: 
-    - s3
-  id-field:
-    - id
-  tags:
-    - source
-
-source-object-4:
-  type: 
-    - s3
-  id-field:
-    - id
-  tags:
-    - source
-
-source-object-5:
-  type: 
-    - s3
-  id-field:
-    - id
-  tags:
-    - source
-
 data-object-1:
-  type: 
-    - postgres
+  type: POSTGRES_TABLE
   id-field:
     - id
   dependencies:
-    - source-object-1
-    - source-object-2
-    - source-object-3
+    source-object-1: False
+    source-object-2: False
+    source-object-3: False
+  tags:
+    - integrated
 
 data-object-2:
-  type: 
-    - postgres
+  type: POSTGRES_TABLE
   id-field:
     - id
   dependencies:
-    - source-object-4
-    - source-object-5
+    source-object-4: False
+    source-object-5: False
+  tags:
+    - integrated
 
 data-object-3:
-  type: 
-    - iceberg
+  type: ICEBERG_TABLE
   id-field:
     - id
   dependencies:
-    - source-object-1
-    - source-object-2
-    - source-object-5
+    source-object-1: False
+    source-object-2: False
+    source-object-5: False
+  tags:
+    - integrated
 
 data-object-4:
-  schedule: 1200
-  type: 
-    - iceberg
+  type: ICEBERG_TABLE
   id-field:
     - id
   dependencies:
-    - data-object-1
-    - data-object-2
+    data-object-1: True
+    data-object-2: True
+  tags:
+    - refined
+
+data-object-5:
+  type: ICEBERG_TABLE
+  id-field:
+    - id
+  dependencies:
+    data-object-1: True
+    data-object-3: True
+  tags:
+    - refined
+
+data-object-6:
+  schedule: "@daily"
+  type: ICEBERG_TABLE
+  id-field:
+    - id
+  dependencies:
+    data-object-1: True
+    data-object-2: True
+    data-object-4: True
   tags:
     - product
 
-data-object-5:
-  schedule: "@daily"
-  type: 
-    - iceberg
+data-object-7:
+  schedule: 1200
+  type: ICEBERG_TABLE
   id-field:
     - id
   dependencies:
-    - data-object-1
-    - data-object-3
+    data-object-3: True
+    data-object-6: True
   tags:
     - product

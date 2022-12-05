@@ -1,170 +1,135 @@
 from collections import defaultdict
 import json
-from typing import Dict
 import logging
+from typing import Optional, List
 
-from airflow.operators.python import PythonOperator
-from airflow.operators.branch import BaseBranchOperator
+from airflow.operators.python import ShortCircuitOperator, PythonOperator
 from airflow.operators.trigger_dagrun import TriggerDagRunOperator
-from airflow.decorators import task, task_group
+from airflow.decorators import task_group
 
 from bazg.common.kafka_hooks import KafkaConsumerHook, KafkaProducerHook
 
-logger = logging.getLogger(__name__)
 TOPIC = "TopicA"
 
-# @task(task_id="consume-upstream-data-updates", multiple_outputs=True, wait_for_downstream=True)
-# def consume_upstream_data_changes(
-#     this_data_object_id, upstream_data_object_ids, logger=logging.getLogger()
-# ):
-#     """Consume messages from Kafka topic and filter for updates in upstream
-#     data objects"""
-#     group_id = f"{this_data_object_id}-consumer"
-#     config = {
-#         "bootstrap.servers": "kafka:9092",
-#         "group.id": group_id,
-#         "client.id": f"airflow-dag-{this_data_object_id}",
-#         "auto.offset.reset": "earliest",
-#         # "heartbeat.interval.ms": 500,
-#     }
-#     consumer = KafkaConsumerHook(config=config).get_consumer()
-#     consumer.subscribe([TOPIC])
 
-#     total_msg_processed = 0
-#     new_data = defaultdict(list)
-#     while True:
-#         messages = consumer.consume(num_messages=10, timeout=60)
-#         if not messages:
-#             logger.info(
-#                 f"no more messages to consume for topic {TOPIC} and group ID {group_id}"
-#             )
-#             break
-#         total_msg_processed += len(messages)
-#         for m in messages:
-#             this_msg_str = f"{m.topic()}[{m.partition()}]@{m.offset()}"
-#             if m.error():
-#                 logger.error(
-#                     f"received message in {this_msg_str} with error {m.error()}"
-#                 )
-#                 raise RuntimeError(m.error())
-#             logger.info(
-#                 f"{this_data_object_id}: {m.topic()} @ {m.offset()}; {m.key()} :"
-#                 f" {m.value()}"
-#             )
-#             try:
-#                 data = json.loads(m.value().decode())
-#                 updated_data_object_id = data.get("data_object_id")
+class GatherUpstreamDataChangesOperator(PythonOperator):
+    ui_color = "#f6dff0"
 
+    def __init__(
+        self,
+        this_data_object_id: str,
+        upstream_data_object_ids: Optional[List[str]] = None,
+        topic: str = TOPIC,
+        task_id="gather-upstream-data-changes",
+        **kwargs,
+    ) -> None:
+        super().__init__(
+            python_callable=self.gather_upstream_data_changes,
+            task_id=task_id,
+            **kwargs,
+        )
+        self._this_data_object_id = this_data_object_id
+        self._topic = topic
+        self._upstream_data_object_ids = (
+            upstream_data_object_ids if upstream_data_object_ids else []
+        )
+        self.logger = logging.getLogger(self.__class__.__name__)
 
-#                 if updated_data_object_id in upstream_data_object_ids:
-#                     new_data[updated_data_object_id].append(data)
+    def gather_upstream_data_changes(self, task_instance=None):
+        """Consume messages from Kafka topic and filter for updates in upstream
+        data objects"""
+        group_id = f"{self._this_data_object_id}-consumer"
+        config = {
+            "bootstrap.servers": "kafka:9092",
+            "group.id": group_id,
+            "client.id": f"airflow-dag-{self._this_data_object_id}",
+            "auto.offset.reset": "earliest",
+        }
+        consumer = KafkaConsumerHook(config=config).get_consumer()
+        consumer.subscribe([self._topic])
 
-#             except Exception as e:
-#                 raise RuntimeError(
-#                     f"error processing message {m.topic()}[{m.partition()}]@{m.offset()}"
-#                 ) from e
-
-#     # Done consuming and interpreting the new Kafka messages.
-#     consumer.commit()
-#     # NO FAILURES AFTER THIS POINT
-
-#     return new_data
-
-
-def consume_upstream_data_updates_func(
-    this_data_object_id, upstream_data_object_ids, **kwargs
-):
-    """Consume messages from Kafka topic and filter for updates in upstream
-    data objects"""
-    group_id = f"{this_data_object_id}-consumer"
-    config = {
-        "bootstrap.servers": "kafka:9092",
-        "group.id": group_id,
-        "client.id": f"airflow-dag-{this_data_object_id}",
-        "auto.offset.reset": "earliest",
-        # "heartbeat.interval.ms": 500,
-    }
-    consumer = KafkaConsumerHook(config=config).get_consumer()
-    consumer.subscribe([TOPIC])
-
-    total_msg_processed = 0
-    new_data = defaultdict(list)
-    while True:
-        messages = consumer.consume(num_messages=10, timeout=5)
-        if not messages:
-            logger.info(
-                f"no more messages to consume for topic {TOPIC} and group ID {group_id}"
-            )
-            break
-        total_msg_processed += len(messages)
-        for m in messages:
-            this_msg_str = f"{m.topic()}[{m.partition()}]@{m.offset()}"
-            if m.error():
-                logger.error(
-                    f"received message in {this_msg_str} with error {m.error()}"
+        total_msg_processed = 0
+        data_changes = defaultdict(list)
+        while True:
+            messages = consumer.consume(num_messages=10, timeout=5)
+            if not messages:
+                self.logger.info(
+                    f"no more messages to consume for topic {TOPIC} and group ID {group_id}"
                 )
-                raise RuntimeError(m.error())
-            logger.info(
-                f"{this_data_object_id}: {m.topic()} @ {m.offset()}; {m.key()} :"
-                f" {m.value()}"
-            )
-            try:
-                data = json.loads(m.value().decode())
-                updated_data_object_id = data.get("data_object_id")
+                break
+            total_msg_processed += len(messages)
+            for m in messages:
+                this_msg_str = f"{m.topic()}[{m.partition()}]@{m.offset()}"
+                if m.error():
+                    self.logger.error(
+                        f"received message in {this_msg_str} with error {m.error()}"
+                    )
+                    raise RuntimeError(m.error())
+                self.logger.info(
+                    f"{self._this_data_object_id}: {m.topic()} @ {m.offset()}; {m.key()} :"
+                    f" {m.value()}"
+                )
+                try:
+                    data = json.loads(m.value().decode())
+                    updated_data_object_id = data.get("data_object_id")
 
-                # data_source
-                if (
-                    not upstream_data_object_ids
-                    and updated_data_object_id == this_data_object_id
-                ):
-                    new_data[updated_data_object_id].append(data)
-                # data_object
-                elif updated_data_object_id in upstream_data_object_ids:
-                    new_data[updated_data_object_id].append(data)
+                    if updated_data_object_id in self._upstream_data_object_ids:
+                        data_changes[updated_data_object_id].append(data)
+                except Exception as e:
+                    raise RuntimeError(
+                        f"error processing message {m.topic()}[{m.partition()}]@{m.offset()}"
+                    ) from e
 
-            except Exception as e:
-                raise RuntimeError(
-                    f"error processing message {m.topic()}[{m.partition()}]@{m.offset()}"
-                ) from e
+        task_instance.xcom_push(key="data_changes", value=data_changes)
 
-    ti = kwargs["ti"]
-    ti.xcom_push(key="new_data", value=new_data)
-
-    # Done consuming and interpreting the new Kafka messages.
-    consumer.commit()
-    # NO FAILURES AFTER THIS POINT
-    return
+        # Done consuming and interpreting the new Kafka messages.
+        consumer.commit()
+        # NO FAILURES AFTER THIS POINT
+        return data_changes
 
 
-@task(task_id="publish-data-changes")
-def publish_data_changes(this_data_object_id, run_id=None):
-    """Consume messages from Kafka topic and filter for updates in upstream
-    data objects"""
-    config = {
-        "bootstrap.servers": "kafka:9092",
-        "client.id": f"airflow-dag-{this_data_object_id}",
-    }
-    producer = KafkaProducerHook(config=config).get_producer()
+class PublishDataChangesOperator(PythonOperator):
+    ui_color = "#dff6f2"
 
-    producer.produce(
-        TOPIC,
-        key=this_data_object_id,
-        value=json.dumps(
-            {
-                "data_object_id": this_data_object_id,
-                "data_object_type": "iceberg",
-                "updated_data_ids": run_id,
-                "updated_data_field": "dag_run_id".encode(),
-            }
-        ).encode(),
-    )
-    producer.flush()
+    def __init__(
+        self,
+        this_data_object_id: str,
+        task_id: str = "publish-data-changes",
+        **kwargs,
+    ) -> None:
+        super().__init__(
+            python_callable=self.publish_data_changes,
+            task_id=task_id,
+            **kwargs,
+        )
+        self._this_data_object_id = this_data_object_id
+
+    def publish_data_changes(self, run_id=None):
+        """Consume messages from Kafka topic and filter for updates in upstream
+        data objects"""
+        config = {
+            "bootstrap.servers": "kafka:9092",
+            "client.id": f"airflow-dag-{self._this_data_object_id}",
+        }
+        producer = KafkaProducerHook(config=config).get_producer()
+
+        producer.produce(
+            TOPIC,
+            key=self._this_data_object_id.encode(),
+            value=json.dumps(
+                {
+                    "data_object_id": self._this_data_object_id,
+                    "data_object_type": "iceberg",
+                    "updated_data_ids": run_id,
+                    "updated_data_field": "dag_run_id",
+                }
+            ).encode(),
+        )
+        producer.flush()
 
 
 @task_group
-def update_upstream_data_objects(
-    this_data_object_id, upstream_data_object_ids, **context
-):
+def update_upstream_data_objects(this_data_object_id, upstream_data_object_ids):
     """Update upstream data objects."""
     tasks = [
         TriggerDagRunOperator(
@@ -178,47 +143,42 @@ def update_upstream_data_objects(
     return tasks
 
 
-# @task.branch(task_id="has-upstream-data-changed")
-# def has_upstream_data_changed(upstream_data_changes: Dict):
-#     if len(upstream_data_changes):
-#         return "update-data"
-#     else:
-#         return None
-
-# @task(task_id="update-data", multiple_outputs=True)
-# def update_data(upstream_data_changes: Dict, **context):
-#     print(upstream_data_changes)
-#     return {"this_data_object_id": 1, "upstream_data_object_ids": [context.get("run_id")]}
-
-
-def consume_changes_op_func(**kwargs):
-    mock_messages = [
-        {"object_id": 1, "config": "important"},
-        {"object_id": 1, "config": "important"},
-    ]
-    print(f"pushing {mock_messages}")
-    kwargs["ti"].xcom_push(key="messages", value=mock_messages)
-
-
-def update_data_func(run_id, **kwargs):
-    messages = kwargs["ti"].xcom_pull(
-        task_ids="consume-upstream-data-updates", key="messages"
+def update_data_func(task_instance=None, run_id=None, dag=None):
+    messages = task_instance.xcom_pull(
+        task_ids="gather-upstream-data-changes", key="data_changes"
     )
     print(messages)
-    kwargs["ti"].xcom_push(
+    task_instance.xcom_push(
         key="updated_ids",
         value={
-            "this_data_object_id": self.data_object_id,
+            "this_data_object_id": dag.dag_id,
             "upstream_data_object_ids": run_id,
         },
     )
 
 
-def has_upstream_data_changed_func(**kwargs):
-    upstream_data_changes = kwargs["ti"].xcom_pull(
-        task_ids="consume-upstream-data-updates", key="new_data"
-    )
-    if len(upstream_data_changes):
-        return "update-data"
-    else:
-        return None
+class HasUpstreamDataChangedOperator(ShortCircuitOperator):
+    ui_color = "#eaf2d4"
+    custom_operator_name = "HasUpstreamDataChangedOperator"
+
+    def __init__(
+        self,
+        task_id: str = "has-upstream-data-changed",
+        xcom_task_id: str = "gather-upstream-data-changes",
+        xcom_key: str = "data_changes",
+        **kwargs,
+    ) -> None:
+        super().__init__(
+            task_id=task_id,
+            python_callable=self.has_upstream_data_changed,
+            ignore_downstream_trigger_rules=True,
+            **kwargs,
+        )
+        self._xcom_task_id = xcom_task_id
+        self._xcom_key = xcom_key
+
+    def has_upstream_data_changed(self, task_instance=None):
+        upstream_data_changes = task_instance.xcom_pull(
+            task_ids=self._xcom_task_id, key=self._xcom_key
+        )
+        return len(upstream_data_changes) > 0
