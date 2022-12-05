@@ -6,9 +6,10 @@ from datetime import timedelta, datetime
 import json
 
 from airflow import DAG
-
+from airflow.decorators import task
 from airflow.operators.bash import BashOperator
-from airflow_provider_kafka.operators.produce_to_topic import ProduceToTopicOperator
+
+from bazg.common.kafka_hooks import KafkaProducerHook
 
 
 with DAG(
@@ -40,11 +41,16 @@ with DAG(
         bash_command="date",
     )
 
-    def producer_function():
+    @task
+    def generate_pseudo_data(topic):
         """Produces 5 messages to each of the data sources 1 to 4."""
         filename = os.path.join(
             os.path.abspath(os.path.dirname(__file__)), "data_objects.yaml"
         )
+        producer = KafkaProducerHook(
+            config={"bootstrap.servers": "kafka:9092"}
+        ).get_producer()
+
         with open(filename, "rb") as infile:
             data_obj_spec = yaml.safe_load(infile)
 
@@ -61,22 +67,11 @@ with DAG(
                     "downstream_kwargs": {"additional_arg_1": "value_about_new_data"},
                 }
 
-                yield (
-                    json.dumps(data_object_id),
-                    json.dumps(new_data_notification_message),
+                producer.produce(
+                    topic,
+                    key=data_object_id,
+                    value=json.dumps(new_data_notification_message),
                 )
+        producer.flush()
 
-    produce_operator = ProduceToTopicOperator(
-        task_id="produce_to_topic",
-        topic="TopicA",
-        producer_function="produce_test_source_data.producer_function",
-        kafka_config={"bootstrap.servers": "kafka:9092"},
-    )
-
-    done_operator = BashOperator(
-        task_id="print_done",
-        bash_command="echo 'done!!'",
-        depends_on_past=False,
-    )
-
-    start_operator >> produce_operator >> done_operator
+    start_operator >> generate_pseudo_data("TopicA")

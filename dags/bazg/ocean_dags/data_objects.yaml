@@ -7,37 +7,37 @@ source-object-1:
   tags:
     - source
 
-# source-object-2:
-#   type: 
-#     - s3
-#   id-field:
-#     - id
-#   tags:
-#     - source
+source-object-2:
+  type: 
+    - s3
+  id-field:
+    - id
+  tags:
+    - source
 
-# source-object-3:
-#   type: 
-#     - s3
-#   id-field:
-#     - id
-#   tags:
-#     - source
+source-object-3:
+  type: 
+    - s3
+  id-field:
+    - id
+  tags:
+    - source
 
-# source-object-4:
-#   type: 
-#     - s3
-#   id-field:
-#     - id
-#   tags:
-#     - source
+source-object-4:
+  type: 
+    - s3
+  id-field:
+    - id
+  tags:
+    - source
 
-# source-object-5:
-#   type: 
-#     - s3
-#   id-field:
-#     - id
-#   tags:
-#     - source
+source-object-5:
+  type: 
+    - s3
+  id-field:
+    - id
+  tags:
+    - source
 
 data-object-1:
   type: 
@@ -46,48 +46,48 @@ data-object-1:
     - id
   dependencies:
     - source-object-1
-    # - source-object-2
-    # - source-object-3
+    - source-object-2
+    - source-object-3
 
-# data-object-2:
-#   type: 
-#     - postgres
-#   id-field:
-#     - id
-#   dependencies:
-#     - source-object-4
-#     - source-object-5
+data-object-2:
+  type: 
+    - postgres
+  id-field:
+    - id
+  dependencies:
+    - source-object-4
+    - source-object-5
 
-# data-object-3:
-#   type: 
-#     - iceberg
-#   id-field:
-#     - id
-#   dependencies:
-#     - source-object-1
-#     - source-object-2
-#     - source-object-5
+data-object-3:
+  type: 
+    - iceberg
+  id-field:
+    - id
+  dependencies:
+    - source-object-1
+    - source-object-2
+    - source-object-5
 
 data-object-4:
-  schedule: 15
+  schedule: 1200
   type: 
     - iceberg
   id-field:
     - id
   dependencies:
     - data-object-1
-    # - data-object-2
+    - data-object-2
   tags:
     - product
 
-# data-object-5:
-#   schedule: "@daily"
-#   type: 
-#     - iceberg
-#   id-field:
-#     - id
-#   dependencies:
-#     - data-object-1
-#     - data-object-3
-#   tags:
-#     - product
+data-object-5:
+  schedule: "@daily"
+  type: 
+    - iceberg
+  id-field:
+    - id
+  dependencies:
+    - data-object-1
+    - data-object-3
+  tags:
+    - product
