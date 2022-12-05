@@ -45,7 +45,7 @@ x-airflow-common:
   # Comment the image line, place your Dockerfile in the directory where you placed the docker-compose.yaml
   # and uncomment the "build" line below, Then run `docker-compose build` to build the images.
   image: ${REPOSITORY:-}${AIRFLOW_IMAGE_NAME:-apache/airflow:2.4.3}
-  # build: .
+  # build: images/airflow
   environment:
     &airflow-common-env
     AIRFLOW__CORE__EXECUTOR: CeleryExecutor
@@ -73,7 +73,7 @@ x-airflow-common:
 
 services:
   postgres:
-    image: ${REPOSITORY:-}postgres:13
+    image: repo.bit.admin.ch:8444/postgres:13
     environment:
       POSTGRES_USER: airflow
       POSTGRES_PASSWORD: airflow
@@ -87,7 +87,7 @@ services:
     restart: always
 
   redis:
-    image: ${REPOSITORY:-}redis:latest
+    image: repo.bit.admin.ch:8444/redis:latest
     expose:
       - 6379
     healthcheck:
@@ -98,8 +98,8 @@ services:
     restart: always
 
   zookeeper:
-    image: ${REPOSITORY:-}confluentinc/cp-zookeeper:7.3.0
-    container_name: zookeeper
+    image: repo.bit.admin.ch:8444/confluentinc/cp-zookeeper:7.3.0
+    hostname: zookeeper
     ports:
       - "2181:2181"
     environment:
@@ -107,8 +107,8 @@ services:
       ZOOKEEPER_TICK_TIME: 2000
 
   kafka:
-    image: ${REPOSITORY:-}confluentinc/cp-kafka:7.3.0
-    container_name: kafka
+    image: repo.bit.admin.ch:8444/confluentinc/cp-kafka:7.3.0
+    hostname: kafka
     ports:
     # To learn about configuring Kafka for access across networks see
     # https://www.confluent.io/blog/kafka-client-cannot-connect-to-broker-on-aws-on-docker-etc/
