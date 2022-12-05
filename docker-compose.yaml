@@ -73,7 +73,8 @@ x-airflow-common:
 
 services:
   postgres:
-    image: repo.bit.admin.ch:8444/postgres:13
+    # image: repo.bit.admin.ch:8444/postgres:13
+    image: postgres:13
     environment:
       POSTGRES_USER: airflow
       POSTGRES_PASSWORD: airflow
@@ -87,7 +88,8 @@ services:
     restart: always
 
   redis:
-    image: repo.bit.admin.ch:8444/redis:latest
+    # image: repo.bit.admin.ch:8444/redis:latest
+    image: redis:latest
     expose:
       - 6379
     healthcheck:
@@ -98,7 +100,8 @@ services:
     restart: always
 
   zookeeper:
-    image: repo.bit.admin.ch:8444/confluentinc/cp-zookeeper:7.3.0
+    # image: repo.bit.admin.ch:8444/confluentinc/cp-zookeeper:7.3.0
+    image: confluentinc/cp-zookeeper:7.3.0
     hostname: zookeeper
     ports:
       - "2181:2181"
@@ -107,7 +110,8 @@ services:
       ZOOKEEPER_TICK_TIME: 2000
 
   kafka:
-    image: repo.bit.admin.ch:8444/confluentinc/cp-kafka:7.3.0
+    # image: repo.bit.admin.ch:8444/confluentinc/cp-kafka:7.3.0
+    image: confluentinc/cp-kafka:7.3.0
     hostname: kafka
     ports:
     # To learn about configuring Kafka for access across networks see
