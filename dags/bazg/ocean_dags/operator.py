@@ -125,6 +125,7 @@ class PublishDataChangesOperator(PythonOperator):
                 }
             ).encode(),
         )
+        assert False
         producer.flush()
 
 
