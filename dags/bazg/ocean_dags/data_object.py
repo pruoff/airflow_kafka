@@ -1,18 +1,18 @@
 import datetime
 from enum import Enum
-from typing import List, Optional
+from typing import List, Optional, Dict, Set
 
 from airflow import DAG
-from airflow.operators.python import PythonOperator, BranchPythonOperator
+from airflow.operators.python import (
+    PythonOperator,
+)
 
 from bazg.ocean_dags.operator import (
-    consume_upstream_data_changes,
-    update_upstream_data_objects,
-    publish_data_changes,
-    has_upstream_data_changed_func,
-    consume_changes_op_func,
     update_data_func,
-    consume_upstream_data_updates_func,
+    update_upstream_data_objects,
+    HasUpstreamDataChangedOperator,
+    GatherUpstreamDataChangesOperator,
+    PublishDataChangesOperator,
 )
 
 
@@ -28,7 +28,7 @@ class DataObject(object):
         data_object_id: str,
         data_object_type: DataObjectType,
         schedule: Optional[int] = None,
-        upstream_data_object_ids: Optional[List[int]] = None,
+        upstream_data_objects: Optional[Dict[str, bool]] = None,
         tags: Optional[List[str]] = None,
     ) -> None:
         super().__init__()
@@ -39,8 +39,8 @@ class DataObject(object):
             if isinstance(schedule, int)
             else schedule
         )
-        self._upstream_data_object_ids = (
-            upstream_data_object_ids if upstream_data_object_ids else []
+        self._upstream_data_objects = (
+            upstream_data_objects if upstream_data_objects else {}
         )
         self._tags = tags if tags else []
 
@@ -57,8 +57,16 @@ class DataObject(object):
         return self._schedule
 
     @property
-    def upstream_data_object_ids(self) -> List[int]:
-        return self._upstream_data_object_ids
+    def upstream_data_object_ids(self) -> Set[str]:
+        return set(self._upstream_data_objects.keys())
+
+    @property
+    def upstream_data_object_ids_to_update(self) -> Set[str]:
+        return {
+            doid
+            for doid, requires_update in self._upstream_data_objects.items()
+            if requires_update
+        }
 
     @property
     def tags(self) -> List[str]:
@@ -77,40 +85,21 @@ class DataObject(object):
                 "provide_context": True,
             },
         ):
-            # @task.branch(task_id="has-upstream-data-changed")
-            # def has_upstream_data_changed(upstream_data_changes: Dict):
-            #     if len(upstream_data_changes):
-            #         return "update-data"
-            #     else:
-            #         return None
-
-            has_upstream_data_changed = BranchPythonOperator(
-                task_id="has-upstream-data-changed",
-                python_callable=has_upstream_data_changed_func,
-            )
-
-            # consume_changes_op = consume_upstream_data_changes(
-            #     this_data_object_id=self.data_object_id,
-            #     upstream_data_object_ids=self.upstream_data_object_ids,
-            # )
-
-            # if self.upstream_data_object_ids:
-            #     update_upstream_op = update_upstream_data_objects(
-            #         this_data_object_id=self.data_object_id,
-            #         upstream_data_object_ids=self.upstream_data_object_ids,
-            #     )
-
-            #     update_upstream_op >> consume_changes_op
-
-            consume_data = PythonOperator(
-                task_id="consume-upstream-data-updates",
-                python_callable=consume_upstream_data_updates_func,
+            consume_data = GatherUpstreamDataChangesOperator(
+                this_data_object_id=self.data_object_id,
+                upstream_data_object_ids=self.upstream_data_object_ids,
                 wait_for_downstream=True,
-                op_kwargs={
-                    "this_data_object_id": self.data_object_id,
-                    "upstream_data_object_ids": self.upstream_data_object_ids,
-                },
             )
+
+            has_upstream_data_changed = HasUpstreamDataChangedOperator()
+
+            if self.upstream_data_object_ids_to_update:
+                update_upstream_op = update_upstream_data_objects(
+                    this_data_object_id=self.data_object_id,
+                    upstream_data_object_ids=self.upstream_data_object_ids_to_update,
+                )
+
+                update_upstream_op >> consume_data
 
             update_data = PythonOperator(
                 task_id="update-data",
@@ -118,4 +107,7 @@ class DataObject(object):
                 op_kwargs={"run_id": "{{ run_id }}"},
             )
 
-            consume_data >> has_upstream_data_changed >> update_data
+            publish_changes = PublishDataChangesOperator(
+                this_data_object_id=self.data_object_id
+            )
+            consume_data >> has_upstream_data_changed >> update_data >> publish_changes

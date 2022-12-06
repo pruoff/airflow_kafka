@@ -55,26 +55,28 @@ with DAG(
             data_obj_spec = yaml.safe_load(infile)
 
         for data_object_id, data_object_definition in data_obj_spec.items():
-            if "source" not in data_object_id:
-                continue
+            upstream_dependencies = data_object_definition.get("dependencies", {})
 
             data_object_type = data_object_definition.get("type")
             data_object_id_field = data_object_definition.get("id-field")
 
-            for i in range(5):
-                new_data_notification_message = {
-                    "data_object_id": data_object_id,
-                    "data_object_type": data_object_type,
-                    "updated_data_ids": [i],
-                    "updated_data_field": data_object_id_field,
-                    "downstream_kwargs": {"additional_arg_1": "value_about_new_data"},
-                }
+            for doid, requires_update in upstream_dependencies.items():
+                if requires_update:
+                    continue
+                for i in range(5):
+                    new_data_notification_message = {
+                        "data_object_id": doid,
+                        "data_object_type": data_object_type,
+                        "updated_data_ids": [i],
+                        "updated_data_field": data_object_id_field,
+                        "downstream_kwargs": {"additional_arg_1": "value_about_new_data"},
+                    }
 
-                producer.produce(
-                    topic,
-                    key=data_object_id,
-                    value=json.dumps(new_data_notification_message),
-                )
+                    producer.produce(
+                        topic,
+                        key=data_object_id,
+                        value=json.dumps(new_data_notification_message),
+                    )
         producer.flush()
 
     start_operator >> generate_pseudo_data("TopicA")
