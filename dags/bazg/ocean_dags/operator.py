@@ -3,7 +3,7 @@ import json
 import logging
 from typing import Optional, List
 
-from airflow.operators.python import ShortCircuitOperator, PythonOperator
+from airflow.operators.python import BranchPythonOperator, PythonOperator
 from airflow.operators.trigger_dagrun import TriggerDagRunOperator
 from airflow.decorators import task_group
 
@@ -125,6 +125,7 @@ class PublishDataChangesOperator(PythonOperator):
                 }
             ).encode(),
         )
+        assert False
         producer.flush()
 
 
@@ -157,7 +158,7 @@ def update_data_func(task_instance=None, run_id=None, dag=None):
     )
 
 
-class HasUpstreamDataChangedOperator(ShortCircuitOperator):
+class HasUpstreamDataChangedOperator(BranchPythonOperator):
     ui_color = "#eaf2d4"
     custom_operator_name = "HasUpstreamDataChangedOperator"
 
@@ -171,7 +172,6 @@ class HasUpstreamDataChangedOperator(ShortCircuitOperator):
         super().__init__(
             task_id=task_id,
             python_callable=self.has_upstream_data_changed,
-            ignore_downstream_trigger_rules=True,
             **kwargs,
         )
         self._xcom_task_id = xcom_task_id
@@ -181,4 +181,7 @@ class HasUpstreamDataChangedOperator(ShortCircuitOperator):
         upstream_data_changes = task_instance.xcom_pull(
             task_ids=self._xcom_task_id, key=self._xcom_key
         )
-        return len(upstream_data_changes) > 0
+        if len(upstream_data_changes) > 0:
+            return "update-data"
+        else:
+            return "data-object-update-done"
