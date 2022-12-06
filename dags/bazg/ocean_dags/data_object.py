@@ -3,9 +3,9 @@ from enum import Enum
 from typing import List, Optional, Dict, Set
 
 from airflow import DAG
-from airflow.operators.python import (
-    PythonOperator,
-)
+from airflow.operators.python import PythonOperator
+from airflow.operators.empty import EmptyOperator
+from airflow.utils.edgemodifier import Label
 
 from bazg.ocean_dags.operator import (
     update_data_func,
@@ -85,6 +85,9 @@ class DataObject(object):
                 "provide_context": True,
             },
         ):
+            # dummy operator to collect overall status of last dag run
+            previous_update = EmptyOperator(task_id="check-last-update", wait_for_downstream=True)
+
             consume_data = GatherUpstreamDataChangesOperator(
                 this_data_object_id=self.data_object_id,
                 upstream_data_object_ids=self.upstream_data_object_ids,
@@ -99,7 +102,9 @@ class DataObject(object):
                     upstream_data_object_ids=self.upstream_data_object_ids_to_update,
                 )
 
-                update_upstream_op >> consume_data
+                previous_update >> update_upstream_op >> consume_data
+            else:
+                previous_update >> consume_data
 
             update_data = PythonOperator(
                 task_id="update-data",
@@ -110,4 +115,16 @@ class DataObject(object):
             publish_changes = PublishDataChangesOperator(
                 this_data_object_id=self.data_object_id
             )
-            consume_data >> has_upstream_data_changed >> update_data >> publish_changes
+            dag_done = EmptyOperator(task_id="data-object-update-done")
+            (
+                consume_data
+                >> has_upstream_data_changed
+                >> Label("upstream data changed")
+                >> update_data
+                >> publish_changes
+                >> dag_done
+            )
+            has_upstream_data_changed >> Label("no changes") >> dag_done
+            # artificial dependency to make the final dag run status a direct downstream task
+            # such taht wait_for_downstream takes effect
+            previous_update >> Label("propagate final status") >> dag_done
